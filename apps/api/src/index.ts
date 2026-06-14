@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import type { Session, User } from "better-auth/types";
@@ -628,7 +630,7 @@ export function createApp() {
 }
 
 export async function runStartupTasks() {
-  const currentDir = __dirname;
+  const currentDir = dirname(fileURLToPath(import.meta.url));
 
   await prepareDatabaseStartup({
     waitForDatabase: async () => {
@@ -742,7 +744,9 @@ const {
   oauthApi,
 } = createdApp;
 
-const isMainModule = require.main === module;
+const isMainModule =
+  Boolean(process.argv[1]) &&
+  import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
 
 if (isMainModule) {
   void startServer(injectWebSocket);
