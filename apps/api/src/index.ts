@@ -630,7 +630,11 @@ export function createApp() {
 }
 
 export async function runStartupTasks() {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
+  // Works in both ESM (import.meta.url) and CJS (__dirname via ncc bundler)
+  const currentDir =
+    typeof __dirname !== "undefined"
+      ? __dirname
+      : dirname(fileURLToPath(import.meta.url));
 
   await prepareDatabaseStartup({
     waitForDatabase: async () => {
