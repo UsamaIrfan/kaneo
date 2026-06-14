@@ -7,6 +7,7 @@ import {
   defaultTelegramEvents,
   normalizeTelegramConfig,
   type TelegramConfig,
+  type TelegramEventKey,
   telegramConfigSchema,
   telegramEventsSchema,
 } from "../../plugins/telegram/config";
@@ -44,9 +45,10 @@ export function buildNextTelegramConfigFromPatch(
         ? currentConfig.chatLabel
         : (body.chatLabel ?? undefined),
     events: {
+      ...defaultTelegramEvents,
       ...(currentConfig.events ?? {}),
       ...(body.events ?? {}),
-    },
+    } as Record<TelegramEventKey, boolean>,
   };
 }
 

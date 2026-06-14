@@ -455,7 +455,7 @@ export async function deliverNotification(
     },
   };
 
-  const deliveries: Array<Promise<void>> = [];
+  const deliveries: Array<Promise<unknown>> = [];
 
   if (decryptedPreference.emailEnabled && rule.emailEnabled && user.email) {
     deliveries.push(

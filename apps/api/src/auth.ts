@@ -454,9 +454,10 @@ export const auth = betterAuth({
           // Otherwise a fresh instance with DISABLE_REGISTRATION=true
           // could never be set up because `checkRegistrationAllowed`
           // would reject the first user (qodo bot #3).
-          const [{ value: existingUserCount }] = await db
+          const countResult = await db
             .select({ value: count() })
             .from(schema.userTable);
+          const existingUserCount = countResult[0]?.value ?? 0;
           if (existingUserCount === 0) {
             return;
           }
