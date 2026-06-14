@@ -1,0 +1,7 @@
+{
+  "buildCommand": "pnpm build",
+  "framework": null,
+  "settings": {
+    "skipTypeCheck": true
+  }
+}
