@@ -61,9 +61,9 @@ export function workspaceAccessMiddleware(
         const body = await readJsonObjectBody(c);
         const idFromBody =
           typeof body[source.idKey] === "string" ? body[source.idKey] : null;
-        const id =
+        const id: string | null =
           c.req.param(source.idKey) || c.req.query(source.idKey) || idFromBody;
-        if (id) {
+        if (id !== null) {
           workspaceId = await lookupWorkspaceId(source.resource, id);
         }
       }

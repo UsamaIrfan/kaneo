@@ -802,6 +802,10 @@ const task = new Hono<{
               id: assetTable.id,
             });
 
+      if (!asset) {
+        throw new HTTPException(500, { message: "Failed to save asset" });
+      }
+
       return c.json({
         id: asset.id,
         url: new URL(`/api/asset/${asset.id}`, c.req.url).toString(),
