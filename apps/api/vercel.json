@@ -1,18 +1,19 @@
 {
   "version": 2,
+  "buildCommand": "pnpm --filter @kaneo/api build:vercel",
   "builds": [
     {
-      "src": "api/index.ts",
+      "src": "dist/vercel/index.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["src/**", "drizzle/**"]
+        "includeFiles": ["dist/vercel/**", "drizzle/**"]
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/index.ts"
+      "dest": "/dist/vercel/index.js"
     }
   ]
 }
