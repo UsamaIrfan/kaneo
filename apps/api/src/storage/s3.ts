@@ -256,7 +256,7 @@ export async function createTaskImageUploadUrl(
     ContentType: context.contentType,
   });
 
-  const uploadUrl = await getSignedUrl(client, command, {
+  const uploadUrl = await getSignedUrl(client as Parameters<typeof getSignedUrl>[0], command, {
     expiresIn: config.presignTtlSeconds,
   });
 
