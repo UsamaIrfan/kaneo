@@ -1,5 +1,3 @@
-import { dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import type { Session, User } from "better-auth/types";
@@ -118,7 +116,7 @@ function buildContentDisposition(filename: string) {
       .normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[\\/]/g, "-")
-      .replace(/[^\x20-\u7E]+/g, "_")
+      .replace(/[^\x20-\u007E]+/g, "_")
       .replace(/\s+/g, " ")
       .trim() || "file";
   const encodedFilename = encodeURIComponent(safeFilename).replace(
@@ -460,7 +458,7 @@ export function createApp() {
       const headers = new Headers(c.req.raw.headers);
 
       // Better Auth API key plugin validates from x-api-key by default.
-      headers.set("x-api-key", bearerMatch[1]);
+      headers.set("x-api-key", bearerMatch[1] ?? "");
 
       return auth.handler(
         new Request(c.req.raw, {
@@ -630,7 +628,7 @@ export function createApp() {
 }
 
 export async function runStartupTasks() {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
+  const currentDir = __dirname;
 
   await prepareDatabaseStartup({
     waitForDatabase: async () => {
@@ -744,9 +742,7 @@ const {
   oauthApi,
 } = createdApp;
 
-const isMainModule =
-  Boolean(process.argv[1]) &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMainModule = require.main === module;
 
 if (isMainModule) {
   void startServer(injectWebSocket);
