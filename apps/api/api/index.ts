@@ -28,17 +28,19 @@ export default async function handler(
 
   const body =
     req.method !== "GET" && req.method !== "HEAD"
-      ? await new Promise<Buffer>((resolve) => {
+      ? await new Promise<Uint8Array>((resolve) => {
           const chunks: Buffer[] = [];
           req.on("data", (chunk: Buffer) => chunks.push(chunk));
-          req.on("end", () => resolve(Buffer.concat(chunks)));
+          req.on("end", () =>
+            resolve(new Uint8Array(Buffer.concat(chunks))),
+          );
         })
       : undefined;
 
   const request = new Request(url, {
     method: req.method ?? "GET",
     headers,
-    body: body && body.length > 0 ? body : undefined,
+    body: body && body.length > 0 ? new Uint8Array(body) : undefined,
   });
 
   const response = await app.fetch(request);
