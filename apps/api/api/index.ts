@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createApp, runStartupTasks } from "../src/index";
+import { createApp, runStartupTasks } from "../dist/index.js";
+
 
 const { app } = createApp();
 
