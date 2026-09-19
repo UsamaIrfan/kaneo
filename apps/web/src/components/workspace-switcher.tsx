@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-
+import NotificationDropdown from "@/components/notification/notification-dropdown";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,12 +20,14 @@ import {
 } from "@/components/ui/sidebar";
 import { UserAvatar } from "@/components/user-avatar";
 import { shortcuts } from "@/constants/shortcuts";
+import useGetConfig from "@/hooks/queries/config/use-get-config";
 import useActiveWorkspace from "@/hooks/queries/workspace/use-active-workspace";
 import useGetWorkspaces from "@/hooks/queries/workspace/use-get-workspaces";
 import {
   getModifierKeyText,
   useRegisterShortcuts,
 } from "@/hooks/use-keyboard-shortcuts";
+import { useUserWebSocket } from "@/hooks/use-user-websocket";
 import { authClient } from "@/lib/auth-client";
 import type { Workspace } from "@/types/workspace";
 import CreateWorkspaceModal from "./shared/modals/create-workspace-modal";
@@ -33,7 +35,15 @@ import CreateWorkspaceModal from "./shared/modals/create-workspace-modal";
 export function WorkspaceSwitcher() {
   const { t } = useTranslation();
   const { data: workspace } = useActiveWorkspace();
+
+  // User-scoped WebSocket for real-time events (e.g. NOTIFICATION_CREATED)
+  useUserWebSocket();
   const { data: workspaces } = useGetWorkspaces();
+  const { data: session } = authClient.useSession();
+  const { data: config } = useGetConfig();
+  const isAdmin = session?.user?.role === "admin";
+  const canCreateWorkspace =
+    isAdmin || (config !== undefined && !config.disableWorkspaceCreation);
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = React.useState(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] =
@@ -96,7 +106,9 @@ export function WorkspaceSwitcher() {
           setIsOpen(true);
         },
         [shortcuts.workspace.create]: () => {
-          setIsCreateWorkspaceModalOpen(true);
+          if (canCreateWorkspace) {
+            setIsCreateWorkspaceModalOpen(true);
+          }
         },
       },
     },
@@ -128,7 +140,7 @@ export function WorkspaceSwitcher() {
                   </span>
                 </div>
                 <ChevronDown
-                  className={`ml-1 size-3.5 text-foreground/70 opacity-90 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:rotate-180 transition-all duration-200 ease-out ${isSwitching ? "animate-spin" : ""}`}
+                  className={`ml-1 size-3.5 text-foreground/70 opacity-90 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:rotate-180 transition-[rotate,opacity] duration-200 ease-out ${isSwitching ? "animate-spin" : ""}`}
                   data-state={isOpen ? "open" : "closed"}
                 />
               </DropdownMenuTrigger>
@@ -168,23 +180,32 @@ export function WorkspaceSwitcher() {
                   </DropdownMenuItem>
                 ))}
 
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    setIsCreateWorkspaceModalOpen(true);
-                    setIsOpen(false);
-                  }}
-                  className="h-7 text-sm data-highlighted:bg-sidebar-accent data-highlighted:text-sidebar-accent-foreground"
-                >
-                  <span>{t("navigation:workspaceSwitcher.addWorkspace")}</span>
-                </DropdownMenuItem>
+                {canCreateWorkspace && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setIsCreateWorkspaceModalOpen(true);
+                        setIsOpen(false);
+                      }}
+                      className="h-7 text-sm data-highlighted:bg-sidebar-accent data-highlighted:text-sidebar-accent-foreground"
+                    >
+                      <span>
+                        {t("navigation:workspaceSwitcher.addWorkspace")}
+                      </span>
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
 
-        <div className="h-7 w-7 shrink-0">
-          <UserAvatar />
+        <div className="flex items-center gap-1">
+          <NotificationDropdown />
+          <div className="h-8 w-8 shrink-0">
+            <UserAvatar />
+          </div>
         </div>
       </div>
 

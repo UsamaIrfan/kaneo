@@ -8,7 +8,7 @@ import {
   taskTable,
 } from "../../database/schema";
 import { publishEvent } from "../../events";
-import getNextTaskNumber from "./get-next-task-number";
+import { claimTaskNumber } from "./claim-task-numbers";
 
 type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -34,7 +34,9 @@ async function resolveDestinationStatus(
     .where(eq(columnTable.projectId, destinationProjectId))
     .orderBy(asc(columnTable.position));
 
-  if (destinationColumns.length === 0) {
+  const [firstColumn] = destinationColumns;
+
+  if (!firstColumn) {
     throw new HTTPException(400, {
       message: "Destination project does not have a workflow",
     });
@@ -54,7 +56,7 @@ async function resolveDestinationStatus(
     (column) => column.slug === currentStatus,
   );
 
-  return requestedColumn ?? matchingCurrentColumn ?? destinationColumns[0];
+  return requestedColumn ?? matchingCurrentColumn ?? firstColumn;
 }
 
 async function getNextTaskPosition(
@@ -137,7 +139,7 @@ async function moveTask({
 
   const movedTask = await db.transaction(async (tx) => {
     const [nextTaskNumber, nextPosition] = await Promise.all([
-      getNextTaskNumber(destinationProjectId, tx),
+      claimTaskNumber(destinationProjectId, tx),
       getNextTaskPosition(
         tx,
         destinationProjectId,
@@ -152,7 +154,7 @@ async function moveTask({
         projectId: destinationProjectId,
         status: resolvedColumn.slug,
         columnId: resolvedColumn.id,
-        number: nextTaskNumber + 1,
+        number: nextTaskNumber,
         position: nextPosition,
       })
       .where(eq(taskTable.id, taskId))

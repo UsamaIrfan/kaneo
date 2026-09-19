@@ -22,7 +22,9 @@ import {
 import { Input } from "@/components/ui/input";
 import useCreateTask from "@/hooks/mutations/task/use-create-task";
 import { useDeleteTask } from "@/hooks/mutations/task/use-delete-task";
+import { useUpdateTaskStatus } from "@/hooks/mutations/task/use-update-task-status";
 import useCreateTaskRelation from "@/hooks/mutations/task-relation/use-create-task-relation";
+import { useGetColumns } from "@/hooks/queries/column/use-get-columns";
 import useGetTaskRelations from "@/hooks/queries/task-relation/use-get-task-relations";
 import useActiveWorkspace from "@/hooks/queries/workspace/use-active-workspace";
 import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
@@ -36,12 +38,14 @@ type TaskSubtasksProps = {
   taskId: string;
   projectId: string;
   workspaceId: string;
+  parentStatus: string;
 };
 
 export default function TaskSubtasks({
   taskId,
   projectId,
   workspaceId,
+  parentStatus,
 }: TaskSubtasksProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -61,8 +65,24 @@ export default function TaskSubtasks({
   const createTask = useCreateTask();
   const createRelation = useCreateTaskRelation();
   const { mutateAsync: deleteTask } = useDeleteTask();
-  const { canManageTasks } = useWorkspacePermission();
-  const canEdit = canManageTasks();
+  const { mutateAsync: updateTaskStatus } = useUpdateTaskStatus();
+  const { data: columns = [], isLoading: isLoadingColumns } =
+    useGetColumns(projectId);
+  const { canCreateTasks, canUpdateTasks } = useWorkspacePermission();
+  const canEdit = canUpdateTasks();
+  const canCreate = canCreateTasks();
+
+  // Map the completion checkbox to the project's actual column slugs (the API
+  // validates status against columns). A subtask counts as completed when its
+  // status is a final column.
+  const doneSlug = columns.find((c) => c.isFinal)?.slug ?? "done";
+  const todoSlug = columns.find((c) => !c.isFinal)?.slug;
+  const canCreateSubtask =
+    parentStatus === "planned" || (!isLoadingColumns && Boolean(todoSlug));
+  const isCompleted = (status: string) =>
+    columns.length > 0
+      ? (columns.find((c) => c.slug === status)?.isFinal ?? false)
+      : status === "done";
 
   const subtasks = relations
     .filter(
@@ -74,8 +94,8 @@ export default function TaskSubtasks({
         item.task !== null,
     );
 
-  const completedCount = subtasks.filter(
-    (s) => s.task.status === "done",
+  const completedCount = subtasks.filter((s) =>
+    isCompleted(s.task.status),
   ).length;
   const totalCount = subtasks.length;
   const hasSelection = selectedIds.size > 0;
@@ -121,6 +141,21 @@ export default function TaskSubtasks({
         .map(buildTaskObject);
     }
     return [currentTask];
+  };
+
+  const handleToggleComplete = async (taskObj: Task) => {
+    try {
+      await updateTaskStatus({
+        ...taskObj,
+        status: isCompleted(taskObj.status) ? (todoSlug ?? "to-do") : doneSlug,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("tasks:popover.status.updateError"),
+      );
+    }
   };
 
   const getAssignee = (userId: string | null) => {
@@ -224,14 +259,16 @@ export default function TaskSubtasks({
   ]);
 
   const handleAddSubtask = async () => {
-    if (!newTitle.trim()) return;
+    if (!canCreate || !canEdit || !newTitle.trim()) return;
+    const initialStatus = parentStatus === "planned" ? "planned" : todoSlug;
+    if (!initialStatus) return;
 
     try {
       const newTask = await createTask.mutateAsync({
         title: newTitle.trim(),
         description: "",
         projectId,
-        status: "to-do",
+        status: initialStatus,
         priority: "no-priority",
       });
 
@@ -301,12 +338,14 @@ export default function TaskSubtasks({
               </span>
             )}
           </div>
-          {canEdit && (
+          {canEdit && canCreate && (
             <Button
               variant="ghost"
               size="xs"
               className="text-muted-foreground"
+              aria-label={`${t("tasks:subtasks.addAction")} ${t("tasks:subtasks.title")}`}
               onClick={() => setIsAdding(true)}
+              disabled={!canCreateSubtask}
             >
               <Plus className="size-3.5" />
             </Button>
@@ -338,9 +377,11 @@ export default function TaskSubtasks({
                     workspaceId={workspace?.id ?? workspaceId}
                     isSelected={isSelected}
                     isFocused={focusedIndex === index}
+                    isCompleted={isCompleted(subtask.task.status)}
+                    canEdit={canEdit}
                     selectionRadius={getSelectionRadius(index, isSelected)}
                     assignee={getAssignee(subtask.task.userId)}
-                    onToggleSelection={() => toggleSelection(subtask.task.id)}
+                    onToggleComplete={() => handleToggleComplete(taskObj)}
                     onNavigate={() =>
                       navigate({
                         to: "/dashboard/workspace/$workspaceId/project/$projectId/task/$taskId",
@@ -358,7 +399,7 @@ export default function TaskSubtasks({
             </AnimatePresence>
           </div>
 
-          {isAdding && (
+          {isAdding && canEdit && canCreate && (
             <div className="flex items-center gap-2 mt-2">
               <Input
                 size="sm"
@@ -379,7 +420,9 @@ export default function TaskSubtasks({
               <Button
                 size="xs"
                 onClick={handleAddSubtask}
-                disabled={!newTitle.trim() || createTask.isPending}
+                disabled={
+                  !newTitle.trim() || createTask.isPending || !canCreateSubtask
+                }
               >
                 {t("tasks:subtasks.addAction")}
               </Button>
@@ -418,15 +461,19 @@ export default function TaskSubtasks({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose>
-              <Button variant="outline" size="sm">
-                {t("common:actions.cancel")}
-              </Button>
+            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
+              {t("common:actions.cancel")}
             </AlertDialogClose>
-            <AlertDialogClose onClick={handleDeleteTask}>
-              <Button variant="destructive" size="sm">
-                {t("tasks:subtasks.deleteAction")}
-              </Button>
+            <AlertDialogClose
+              render={
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteTask}
+                />
+              }
+            >
+              {t("tasks:subtasks.deleteAction")}
             </AlertDialogClose>
           </AlertDialogFooter>
         </AlertDialogContent>

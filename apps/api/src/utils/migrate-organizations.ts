@@ -33,6 +33,7 @@ async function migrateOrganizations() {
           teamId: data?.id || "",
           userId: member.userId,
         },
+        headers: new Headers(),
       });
     }
   }

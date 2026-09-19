@@ -47,6 +47,7 @@ import useActiveWorkspace from "@/hooks/queries/workspace/use-active-workspace";
 import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
 import { useWorkspacePermission } from "@/hooks/use-workspace-permission";
 import { getColumnIcon } from "@/lib/column";
+import { getInitials } from "@/lib/get-initials";
 import { toast } from "@/lib/toast";
 import type Task from "@/types/task";
 import SubtaskAssigneePopover from "./subtask-assignee-popover";
@@ -94,8 +95,8 @@ export default function TaskRelations({
   );
   const createRelation = useCreateTaskRelation();
   const deleteRelation = useDeleteTaskRelation(taskId);
-  const { canManageTasks } = useWorkspacePermission();
-  const canEdit = canManageTasks();
+  const { canUpdateTasks } = useWorkspacePermission();
+  const canEdit = canUpdateTasks();
 
   useEffect(() => {
     if (!commandOpen) {
@@ -122,13 +123,18 @@ export default function TaskRelations({
       const linkedTask = isSource ? rel.targetTask : rel.sourceTask;
       if (!linkedTask) continue;
 
-      const type = rel.relationType;
+      // "blocks" is directional: when the current task is the target it is the
+      // one being blocked, so group it under a distinct "blocked_by" key.
+      const type =
+        rel.relationType === "blocks" && !isSource
+          ? "blocked_by"
+          : rel.relationType;
       if (!groups[type]) {
         groups[type] = [];
       }
       groups[type].push({
         id: rel.id,
-        relationType: type,
+        relationType: rel.relationType,
         task: linkedTask,
       });
     }
@@ -293,7 +299,9 @@ export default function TaskRelations({
           {Object.entries(groupedRelations).map(([type, items]) => (
             <div key={type} className="mt-1.5">
               <span className="text-[11px] text-muted-foreground/70 px-2">
-                {t(`tasks:relations.types.${type}`, { defaultValue: type })}
+                {t(`tasks:relations.types.${type}`, {
+                  defaultValue: type.replace(/_/g, " "),
+                })}
               </span>
               <div className="flex flex-col mt-0.5">
                 {items.map((item) => {
@@ -347,9 +355,7 @@ export default function TaskRelations({
                                     alt={assignee?.user?.name || ""}
                                   />
                                   <AvatarFallback className="text-[9px] font-medium border border-border/30">
-                                    {assignee?.user?.name
-                                      ?.charAt(0)
-                                      .toUpperCase()}
+                                    {getInitials(assignee?.user?.name)}
                                   </AvatarFallback>
                                 </Avatar>
                               ) : (

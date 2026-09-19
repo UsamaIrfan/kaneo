@@ -1,6 +1,5 @@
 import type { Editor } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table } from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
@@ -14,25 +13,36 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  BetweenHorizontalEnd,
+  BetweenHorizontalStart,
+  BetweenVerticalEnd,
+  BetweenVerticalStart,
   Bold,
   Check,
   ChevronDown,
+  Columns3,
   Copy,
+  Grid2x2X,
   Italic,
   Link2,
   List,
   ListOrdered,
   ListTodo,
   Paperclip,
+  Rows3,
   UnderlineIcon,
 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { bundledLanguages, type Highlighter } from "shiki";
+import type { Highlighter } from "shiki";
 import { AttachmentCard } from "@/components/task/extensions/attachment-card";
 import { EmbedBlock } from "@/components/task/extensions/embed-block";
 import { KaneoIssueLink } from "@/components/task/extensions/kaneo-issue-link";
+import { KaneoMention } from "@/components/task/extensions/kaneo-mention";
+import type { MentionMember } from "@/components/task/extensions/mention-list";
+import { MentionSuggestion } from "@/components/task/extensions/mention-suggestion";
+import { MermaidBlock } from "@/components/task/extensions/mermaid-block";
 import {
   SHIKI_CODEBLOCK_REFRESH_META,
   ShikiCodeBlock,
@@ -49,6 +59,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
+import useActiveWorkspace from "@/hooks/queries/workspace/use-active-workspace";
+import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
 import { cn } from "@/lib/cn";
 import { parseTaskListMarkdownToNodes } from "@/lib/editor-task-list-paste";
 import {
@@ -57,7 +69,7 @@ import {
   isYouTubeUrl,
   normalizeUrl,
 } from "@/lib/editor-url-utils";
-import { getSharedShikiHighlighter } from "@/lib/shiki-highlighter";
+import { isInCodeBlockLanguagePicker } from "@/lib/is-in-codeblock-language-picker";
 import { toast } from "@/lib/toast";
 import { uploadTaskImage } from "@/lib/upload-task-image";
 
@@ -121,6 +133,7 @@ const CODE_LANG_VALUES = [
   "java",
   "javascript",
   "markdown",
+  "mermaid",
   "plaintext",
   "python",
   "rust",
@@ -177,6 +190,20 @@ export default function CommentEditor({
   const { t } = useTranslation();
   const resolvedPlaceholder =
     placeholder ?? t("activity:comment.leavePlaceholder");
+  const { data: activeWorkspace } = useActiveWorkspace();
+  const { data: workspaceUsers } = useGetActiveWorkspaceUsers(
+    activeWorkspace?.id ?? "",
+  );
+  const mentionMembersRef = useRef<MentionMember[]>([]);
+  mentionMembersRef.current = useMemo(
+    () =>
+      (workspaceUsers?.members ?? []).map((member) => ({
+        id: member.userId,
+        label: member.user?.name ?? member.user?.email ?? "",
+        image: member.user?.image ?? null,
+      })),
+    [workspaceUsers],
+  );
   const editorShellRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
@@ -191,6 +218,8 @@ export default function CommentEditor({
   const onCancelShortcutRef = useRef(onCancelShortcut);
   onSubmitShortcutRef.current = onSubmitShortcut;
   onCancelShortcutRef.current = onCancelShortcut;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const pendingImageInsertRef = useRef<{
     editor: Editor;
     range?: SlashRange;
@@ -225,9 +254,8 @@ export default function CommentEditor({
       })),
     [t],
   );
-  const availableShikiLanguages = useMemo(
-    () => new Set(Object.keys(bundledLanguages)),
-    [],
+  const [availableShikiLanguages, setAvailableShikiLanguages] = useState(
+    () => new Set<string>(),
   );
   const toShikiLanguage = useCallback(
     (language: string) => {
@@ -544,11 +572,24 @@ export default function CommentEditor({
   useEffect(() => {
     let mounted = true;
 
-    void getSharedShikiHighlighter().then((instance) => {
-      if (!mounted) return;
-      shikiHighlighterRef.current = instance;
-      setShikiHighlighter(instance);
-    });
+    void Promise.all([
+      import("@/lib/shiki-highlighter").then(({ getSharedShikiHighlighter }) =>
+        getSharedShikiHighlighter(),
+      ),
+      import("shiki"),
+    ])
+      .then(([instance, { bundledLanguages: languages }]) => {
+        if (!mounted) return;
+        shikiHighlighterRef.current = instance;
+        setShikiHighlighter(instance);
+        setAvailableShikiLanguages(new Set(Object.keys(languages)));
+      })
+      .catch((err) => {
+        // Shared initializer resets its cached promise on rejection so a
+        // later attempt can retry. If this attempt also fails, swallow it
+        // and render without syntax highlighting.
+        console.error("Failed to initialize Shiki highlighter:", err);
+      });
 
     return () => {
       mounted = false;
@@ -577,12 +618,6 @@ export default function CommentEditor({
             HTMLAttributes: { class: "kaneo-tiptap-codeblock" },
           },
         }),
-        Link.configure({
-          autolink: true,
-          defaultProtocol: "https",
-          linkOnPaste: true,
-          openOnClick: readOnly,
-        }),
         Markdown.configure({
           markedOptions: {
             breaks: true,
@@ -595,9 +630,16 @@ export default function CommentEditor({
           themeDark: "github-dark",
           themeLight: "github-light",
         }),
+        MermaidBlock.configure({
+          errorKey: "activity:comment.editor.mermaid.renderFailed",
+        }),
         EmbedBlock,
         AttachmentCard,
         KaneoIssueLink,
+        KaneoMention,
+        MentionSuggestion.configure({
+          getMembers: () => mentionMembersRef.current,
+        }),
         TaskList,
         Image.configure({
           HTMLAttributes: {
@@ -699,6 +741,16 @@ export default function CommentEditor({
           });
           setEmbedComposerError(null);
           return true;
+        },
+        handleClick: (_view, _pos, event) => {
+          if (!readOnlyRef.current) return false;
+          const target = event.target as HTMLElement;
+          const anchor = target.closest("a");
+          if (anchor?.href) {
+            window.open(anchor.href, "_blank", "noopener,noreferrer");
+            return true;
+          }
+          return false;
         },
         handleDrop: (view, event) => {
           if (readOnly || disabled) return false;
@@ -1121,7 +1173,7 @@ export default function CommentEditor({
       const resolvedLanguage = language === "auto" ? "" : language;
       const { nodePos } = hoveredCodeBlock;
       const node = editor.state.doc.nodeAt(nodePos);
-      if (!node || node.type.name !== "codeBlock") return;
+      if (node?.type.name !== "codeBlock") return;
 
       editor
         .chain()
@@ -1332,8 +1384,8 @@ export default function CommentEditor({
 
   const handleEditorMouseLeave = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      const relatedTarget = event.relatedTarget as HTMLElement | null;
-      if (relatedTarget?.closest(".kaneo-codeblock-language")) return;
+      const relatedTarget = event.relatedTarget;
+      if (isInCodeBlockLanguagePicker(relatedTarget)) return;
       if (isCodeLanguageMenuOpen) return;
 
       if (codeLanguageHideTimeoutRef.current !== null) {
@@ -1368,7 +1420,7 @@ export default function CommentEditor({
   const copyHoveredCodeBlock = useCallback(async () => {
     if (!editor || !hoveredCodeBlock) return;
     const node = editor.state.doc.nodeAt(hoveredCodeBlock.nodePos);
-    if (!node || node.type.name !== "codeBlock") return;
+    if (node?.type.name !== "codeBlock") return;
 
     const content = node.textContent || "";
     if (!content) return;
@@ -1608,6 +1660,112 @@ export default function CommentEditor({
             onClick={() => openImagePicker(editor)}
           >
             <Paperclip className="size-3.5" />
+          </Button>
+        </BubbleMenu>
+      )}
+      {editor && !readOnly && !disabled && showBubbleMenu && (
+        <BubbleMenu
+          editor={editor}
+          pluginKey="kaneo-comment-table-bubble"
+          className="kaneo-comment-editor-bubble"
+          shouldShow={({ editor: activeEditor, from, to }) =>
+            activeEditor.isActive("table") && from === to
+          }
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="kaneo-comment-editor-bubble-btn"
+            title={t("activity:comment.editor.table.addColumnBefore", {
+              defaultValue: "Insert column left",
+            })}
+            onClick={() => editor.chain().focus().addColumnBefore().run()}
+          >
+            <BetweenVerticalStart className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="kaneo-comment-editor-bubble-btn"
+            title={t("activity:comment.editor.table.addColumnAfter", {
+              defaultValue: "Insert column right",
+            })}
+            onClick={() => editor.chain().focus().addColumnAfter().run()}
+          >
+            <BetweenVerticalEnd className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className={cn(
+              "kaneo-comment-editor-bubble-btn",
+              "text-destructive",
+            )}
+            title={t("activity:comment.editor.table.deleteColumn", {
+              defaultValue: "Delete column",
+            })}
+            onClick={() => editor.chain().focus().deleteColumn().run()}
+          >
+            <Columns3 className="size-3.5" />
+          </Button>
+          <span className="kaneo-tiptap-bubble-separator" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="kaneo-comment-editor-bubble-btn"
+            title={t("activity:comment.editor.table.addRowBefore", {
+              defaultValue: "Insert row above",
+            })}
+            onClick={() => editor.chain().focus().addRowBefore().run()}
+          >
+            <BetweenHorizontalStart className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="kaneo-comment-editor-bubble-btn"
+            title={t("activity:comment.editor.table.addRowAfter", {
+              defaultValue: "Insert row below",
+            })}
+            onClick={() => editor.chain().focus().addRowAfter().run()}
+          >
+            <BetweenHorizontalEnd className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className={cn(
+              "kaneo-comment-editor-bubble-btn",
+              "text-destructive",
+            )}
+            title={t("activity:comment.editor.table.deleteRow", {
+              defaultValue: "Delete row",
+            })}
+            onClick={() => editor.chain().focus().deleteRow().run()}
+          >
+            <Rows3 className="size-3.5" />
+          </Button>
+          <span className="kaneo-tiptap-bubble-separator" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className={cn(
+              "kaneo-comment-editor-bubble-btn",
+              "text-destructive",
+            )}
+            title={t("activity:comment.editor.table.deleteTable", {
+              defaultValue: "Delete table",
+            })}
+            onClick={() => editor.chain().focus().deleteTable().run()}
+          >
+            <Grid2x2X className="size-3.5" />
           </Button>
         </BubbleMenu>
       )}
