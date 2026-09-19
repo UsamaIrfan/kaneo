@@ -1,10 +1,7 @@
 {
   "functions": {
     "api/index.ts": {
-      "includeFiles": [
-        "drizzle/**",
-        "dist/**"
-      ]
+      "includeFiles": "{drizzle/**,dist/**}"
     }
   },
   "rewrites": [
