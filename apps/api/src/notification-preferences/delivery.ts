@@ -503,7 +503,7 @@ export async function deliverNotification(
     },
   };
 
-  const deliveries: Array<Promise<unknown>> = [];
+  const deliveries: Array<Promise<void>> = [];
 
   if (decryptedPreference.emailEnabled && rule.emailEnabled && user.email) {
     deliveries.push(

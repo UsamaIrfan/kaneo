@@ -133,10 +133,6 @@ async function moveTask({
     destinationStatus,
   );
 
-  if (!resolvedColumn) {
-    throw new HTTPException(400, { message: "Could not resolve destination status" });
-  }
-
   const movedTask = await db.transaction(async (tx) => {
     const [nextTaskNumber, nextPosition] = await Promise.all([
       claimTaskNumber(destinationProjectId, tx),

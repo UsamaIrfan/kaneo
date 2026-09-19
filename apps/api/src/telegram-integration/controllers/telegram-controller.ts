@@ -46,7 +46,7 @@ export function buildNextTelegramConfigFromPatch(
       ...defaultTelegramEvents,
       ...(currentConfig.events ?? {}),
       ...(body.events ?? {}),
-    } as Record<TelegramEventKey, boolean>,
+    },
   };
 }
 

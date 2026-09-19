@@ -67,10 +67,10 @@ export function normalizeTelegramConfig(
   };
 }
 
-export async function validateTelegramConfig(config: unknown): Promise<{
+export function validateTelegramConfig(config: unknown): {
   valid: boolean;
   errors?: string[];
-}> {
+} {
   try {
     const parsed = v.parse(telegramConfigSchema, config);
     normalizeTelegramConfig(parsed);
