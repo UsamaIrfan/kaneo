@@ -1,4 +1,4 @@
-import "./instrument";
+import "./instrument.ts";
 
 import { dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
