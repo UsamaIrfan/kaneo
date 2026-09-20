@@ -59,3 +59,7 @@ apps/web/.tanstack/
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+# Generated Vercel function bundle
+apps/api/api/index.js
+
